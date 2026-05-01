@@ -1,0 +1,105 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fleet-service
+  namespace: dogstronaut
+  labels:
+    app: fleet-service
+    tags.datadoghq.com/env: demo
+    tags.datadoghq.com/service: dogstronaut-fleet
+    tags.datadoghq.com/version: "1.0.0"
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: fleet-service
+  template:
+    metadata:
+      labels:
+        app: fleet-service
+        tags.datadoghq.com/env: demo
+        tags.datadoghq.com/service: dogstronaut-fleet
+        tags.datadoghq.com/version: "1.0.0"
+      annotations:
+        ad.datadoghq.com/fleet-service.logs: '[{"source":"nodejs","service":"dogstronaut-fleet"}]'
+    spec:
+      containers:
+        - name: fleet-service
+          image: wwongpai/dogstronaut-fleet:v7
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 4003
+          env:
+            - name: NODE_ENV
+              value: "demo"
+            - name: PORT
+              value: "4003"
+            - name: DB_HOST
+              value: "postgres"
+            - name: DB_PORT
+              value: "5432"
+            - name: POSTGRES_DB
+              value: "dogstronaut"
+            - name: POSTGRES_USER
+              value: "postgres"
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: dogstronaut-secrets
+                  key: postgres-password
+            - name: DD_SERVICE
+              value: "dogstronaut-fleet"
+            - name: DD_ENV
+              value: "demo"
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: "deployment.environment=demo"
+            - name: DD_VERSION
+              value: "1.0.0"
+            - name: DD_AGENT_HOST
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.hostIP
+            - name: DD_LOGS_INJECTION
+              value: "true"
+            - name: DD_PROFILING_ENABLED
+              value: "true"
+            - name: DD_TRACE_SAMPLE_RATE
+              value: "1"
+            - name: DD_TRACE_AGENT_URL
+              value: "http://$(DD_AGENT_HOST):8126"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://$(DD_AGENT_HOST):4318"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 4003
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 4003
+            initialDelaySeconds: 20
+            periodSeconds: 20
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "250m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fleet-service
+  namespace: dogstronaut
+  labels:
+    app: fleet-service
+spec:
+  type: ClusterIP
+  selector:
+    app: fleet-service
+  ports:
+    - port: 4003
+      targetPort: 4003

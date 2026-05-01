@@ -1,0 +1,18 @@
+{
+  "name": "dogstronaut-loyalty-service",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  },
+  "dependencies": {
+    "axios": "^1.7.2",
+    "cors": "^2.8.5",
+    "dd-trace": "^5.0.0",
+    "express": "^4.19.2",
+    "helmet": "^7.1.0",
+    "uuid": "^10.0.0",
+    "winston": "^3.13.0"
+  }
+}

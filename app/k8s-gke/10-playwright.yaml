@@ -1,0 +1,47 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: playwright-synthetic
+  namespace: dogstronaut
+  labels:
+    app: playwright-synthetic
+spec:
+  schedule: "*/10 * * * *"
+  concurrencyPolicy: Forbid
+  failedJobsHistoryLimit: 3
+  successfulJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 540
+      backoffLimit: 1
+      template:
+        metadata:
+          labels:
+            app: playwright-synthetic
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: playwright
+              # Tests are baked into the image — see app/playwright/
+              # Rebuild: docker buildx build --platform linux/amd64 --provenance=false \
+              #          -t wwongpai/dogstronaut-playwright:vN --push app/playwright/
+              image: wwongpai/dogstronaut-playwright:v8
+              imagePullPolicy: Always
+              command:
+                - npx
+                - playwright
+                - test
+                - --reporter=list
+              env:
+                - name: PLAYWRIGHT_BROWSERS_PATH
+                  value: /ms-playwright
+                # Set this to your frontend LoadBalancer IP (kubectl get svc frontend -n dogstronaut)
+                - name: BASE_URL
+                  value: http://REPLACE_WITH_FRONTEND_LB_IP
+              resources:
+                requests:
+                  cpu: 500m
+                  memory: 512Mi
+                limits:
+                  cpu: 1000m
+                  memory: 1Gi

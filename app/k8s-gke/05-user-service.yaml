@@ -1,0 +1,105 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: user-service
+  namespace: dogstronaut
+  labels:
+    app: user-service
+    tags.datadoghq.com/env: demo
+    tags.datadoghq.com/service: dogstronaut-user
+    tags.datadoghq.com/version: "1.0.0"
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: user-service
+  template:
+    metadata:
+      labels:
+        app: user-service
+        tags.datadoghq.com/env: demo
+        tags.datadoghq.com/service: dogstronaut-user
+        tags.datadoghq.com/version: "1.0.0"
+      annotations:
+        ad.datadoghq.com/user-service.logs: '[{"source":"nodejs","service":"dogstronaut-user"}]'
+    spec:
+      containers:
+        - name: user-service
+          image: wwongpai/dogstronaut-user:v7
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 4004
+          env:
+            - name: NODE_ENV
+              value: "demo"
+            - name: PORT
+              value: "4004"
+            - name: DB_HOST
+              value: "postgres"
+            - name: DB_PORT
+              value: "5432"
+            - name: POSTGRES_DB
+              value: "dogstronaut"
+            - name: POSTGRES_USER
+              value: "postgres"
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: dogstronaut-secrets
+                  key: postgres-password
+            - name: DD_SERVICE
+              value: "dogstronaut-user"
+            - name: DD_ENV
+              value: "demo"
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: "deployment.environment=demo"
+            - name: DD_VERSION
+              value: "1.0.0"
+            - name: DD_AGENT_HOST
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.hostIP
+            - name: DD_LOGS_INJECTION
+              value: "true"
+            - name: DD_PROFILING_ENABLED
+              value: "true"
+            - name: DD_TRACE_SAMPLE_RATE
+              value: "1"
+            - name: DD_TRACE_AGENT_URL
+              value: "http://$(DD_AGENT_HOST):8126"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://$(DD_AGENT_HOST):4318"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 4004
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 4004
+            initialDelaySeconds: 20
+            periodSeconds: 20
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "250m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: user-service
+  namespace: dogstronaut
+  labels:
+    app: user-service
+spec:
+  type: ClusterIP
+  selector:
+    app: user-service
+  ports:
+    - port: 4004
+      targetPort: 4004

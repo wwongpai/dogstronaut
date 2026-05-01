@@ -1,0 +1,50 @@
+# DDOT Collector OTel pipeline config (embedded inside Datadog Agent)
+# Receives OTLP traces/metrics/logs, enriches with K8s infra attributes,
+# exports to Datadog backend + fans out traces to Jaeger
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 300
+    spike_limit_mib: 75
+  # Datadog-specific: enriches OTLP telemetry with Kubernetes pod/node tags
+  # enabling unified service tagging and infra correlation in Datadog
+  infraattributes:
+    cardinality: 2
+  batch:
+    timeout: 10s
+    send_batch_size: 1024
+
+connectors:
+  # Computes APM stats (throughput, error rate, p99 latency) from spans
+  datadog/connector:
+    traces:
+      compute_stats_by_span_kind: true
+
+exporters:
+  # Sends traces + metrics + logs to Datadog backend
+  # API key and site are inherited from the parent Datadog Agent config
+  datadog: {}
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, infraattributes, batch]
+      exporters: [datadog, datadog/connector]
+    metrics:
+      receivers: [otlp, datadog/connector]
+      processors: [memory_limiter, infraattributes, batch]
+      exporters: [datadog]
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, infraattributes, batch]
+      exporters: [datadog]

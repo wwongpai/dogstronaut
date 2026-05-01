@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Live Chat</title>
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0f0f0f;
+      --surface:   #212121;
+      --surface2:  #2d2d2d;
+      --border:    #3f3f3f;
+      --text:      #f1f1f1;
+      --text-dim:  #aaaaaa;
+      --text-mute: #717171;
+      --accent:    #ff0000;
+      --blue:      #3ea6ff;
+    }
+
+    html { height: 100%; }
+
+    body {
+      font-family: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ══════════════════════════════════
+       HEADER — multi-row, flex column.
+       flex-shrink:0 means it ALWAYS
+       takes its full height, no matter
+       what happens below.
+    ══════════════════════════════════ */
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Row 1: live dot + title + user count */
+    .header-row1 {
+      height: 48px;
+      padding: 0 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .live-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--accent); flex-shrink: 0;
+      box-shadow: 0 0 6px var(--accent);
+      animation: pulse 2s ease-in-out infinite;
+    }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.45} }
+
+    .header-title { font-size: 14px; font-weight: 500; }
+
+    #user-count {
+      margin-left: auto;
+      font-size: 12px; color: var(--text-mute);
+      display: flex; align-items: center; gap: 4px;
+    }
+
+    /* Row 2: "Share QR code" tap target — BELOW "Live chat" */
+    #qr-trigger {
+      height: 40px;
+      padding: 0 16px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      cursor: pointer;
+      background: #16213e;
+      color: #8ab4f8;
+      font-size: 13px;
+      font-family: inherit;
+      border: none;
+      border-top: 1px solid var(--border);
+      text-align: left;
+      transition: background .15s;
+      user-select: none;
+    }
+    #qr-trigger:hover  { background: #1a2a52; }
+    #qr-trigger:active { background: #1f3060; }
+
+    #qr-trigger .trigger-label { flex: 1; font-weight: 500; }
+
+    #qr-trigger .chevron {
+      transition: transform .25s ease;
+      flex-shrink: 0;
+      opacity: 0.7;
+    }
+    #qr-trigger.open .chevron { transform: rotate(180deg); }
+
+    /* Row 3: QR panel — inside header, toggled open/closed */
+    #qr-panel {
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 60%, #0f3460 100%);
+      border-top: 1px solid rgba(255,255,255,.08);
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 14px 16px;
+      /* hidden by default until trigger is tapped */
+      display: none;
+    }
+    #qr-panel.open { display: flex; }
+
+    .qr-img-wrap { flex-shrink: 0; }
+    .qr-img-wrap img {
+      width: 100px; height: 100px;
+      border-radius: 8px; display: block;
+      background: #fff; padding: 5px;
+    }
+
+    .qr-info { flex: 1; min-width: 0; }
+    .qr-eyebrow {
+      font-size: 10px; font-weight: 600;
+      letter-spacing: 1.2px; color: var(--blue);
+      text-transform: uppercase; margin-bottom: 4px;
+    }
+    .qr-headline {
+      font-size: 15px; font-weight: 600;
+      color: #fff; margin-bottom: 4px; line-height: 1.3;
+    }
+    .qr-sub {
+      font-size: 12px; color: #8ab4f8;
+      margin-bottom: 10px; line-height: 1.4;
+    }
+    .qr-url {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: rgba(255,255,255,.08);
+      border: 1px solid rgba(255,255,255,.15);
+      border-radius: 6px; padding: 5px 10px;
+      font-size: 11px; color: var(--text-dim);
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      word-break: break-all; cursor: pointer;
+      transition: background .15s; max-width: 100%;
+    }
+    .qr-url:hover { background: rgba(255,255,255,.14); }
+    .qr-url svg { flex-shrink: 0; }
+
+    #copy-toast {
+      font-size: 11px; color: #69f0ae;
+      margin-top: 6px; min-height: 14px;
+      transition: opacity .3s;
+    }
+    #copy-toast.hidden { opacity: 0; }
+
+    /* Mobile: compact QR panel — fixed height, no wrapping text */
+    @media (max-width: 640px) {
+      #qr-panel { padding: 10px 16px; gap: 14px; }
+      .qr-img-wrap img { width: 72px; height: 72px; padding: 4px; }
+      .qr-eyebrow, .qr-sub, .qr-url, #copy-toast { display: none; }
+      .qr-headline { font-size: 13px; margin-bottom: 0; }
+    }
+
+    /* ══════════════════════════════════
+       STATUS BAR
+    ══════════════════════════════════ */
+    #status-bar {
+      font-size: 11px; text-align: center;
+      padding: 4px 8px; display: none; flex-shrink: 0;
+    }
+    #status-bar.connecting { display: block; background: #332d00; color: #ffd600; }
+    #status-bar.error      { display: block; background: #3b0000; color: #ff6b6b; }
+
+    /* ══════════════════════════════════
+       CHAT WRAP + FEED
+    ══════════════════════════════════ */
+    #chat-wrap {
+      flex: 1; min-height: 0;
+      position: relative;
+      display: flex; flex-direction: column;
+      overflow: hidden;
+    }
+
+    #chat-feed {
+      flex: 1; min-height: 0;
+      overflow-y: auto; overflow-x: hidden;
+      padding: 8px 0 4px;
+      display: flex; flex-direction: column;
+      overscroll-behavior: contain;
+    }
+    #chat-feed::-webkit-scrollbar { width: 4px; }
+    #chat-feed::-webkit-scrollbar-track { background: transparent; }
+    #chat-feed::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    .msg {
+      display: flex; align-items: flex-start;
+      gap: 8px; padding: 4px 16px;
+      animation: fadeSlide .15s ease-out both;
+      transition: background .1s; cursor: default;
+    }
+    .msg:hover { background: rgba(255,255,255,.05); }
+
+    @keyframes fadeSlide {
+      from { opacity:0; transform:translateY(6px); }
+      to   { opacity:1; transform:translateY(0); }
+    }
+
+    .avatar {
+      width: 24px; height: 24px; min-width: 24px;
+      border-radius: 50%; display: flex;
+      align-items: center; justify-content: center;
+      font-size: 10px; font-weight: 700; color: #fff;
+      margin-top: 1px; user-select: none;
+    }
+    .msg-content {
+      flex: 1; min-width: 0; font-size: 13px;
+      line-height: 1.5; word-break: break-word;
+    }
+    .msg-username { font-weight: 500; margin-right: 4px; font-size: 13px; }
+    .msg-text     { color: var(--text); font-size: 13px; }
+    .msg-time {
+      font-size: 11px; color: var(--text-mute);
+      margin-left: 6px; white-space: nowrap;
+      opacity: 0; transition: opacity .15s;
+    }
+    .msg:hover .msg-time { opacity: 1; }
+
+    #jump-btn {
+      position: absolute; bottom: 8px; left: 50%;
+      transform: translateX(-50%);
+      background: var(--surface2); border: 1px solid var(--border);
+      color: var(--text-dim); font-size: 12px;
+      padding: 5px 14px; border-radius: 16px;
+      cursor: pointer; display: none;
+      align-items: center; gap: 5px; white-space: nowrap;
+      box-shadow: 0 2px 8px rgba(0,0,0,.5);
+      transition: background .15s, color .15s; z-index: 10;
+    }
+    #jump-btn.visible { display: flex; }
+    #jump-btn:hover { background: var(--border); color: var(--text); }
+
+    #empty-state {
+      flex: 1; display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 8px; color: var(--text-mute); font-size: 13px;
+    }
+    #empty-state svg { opacity: .3; }
+
+    /* ══════════════════════════════════
+       INPUT AREA
+    ══════════════════════════════════ */
+    #input-area {
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      padding: 10px 12px;
+      padding-bottom: max(10px, env(safe-area-inset-bottom));
+      flex-shrink: 0;
+    }
+    .input-row { display: flex; align-items: center; gap: 8px; }
+
+    #my-avatar {
+      width: 28px; height: 28px; min-width: 28px;
+      border-radius: 50%; display: flex;
+      align-items: center; justify-content: center;
+      font-size: 11px; font-weight: 700; color: #fff; flex-shrink: 0;
+    }
+    #msg-input {
+      flex: 1; background: var(--bg);
+      border: 1px solid var(--border); border-radius: 2px;
+      padding: 8px 12px; font-size: 13px; color: var(--text);
+      outline: none; font-family: inherit; min-width: 0;
+      transition: border-color .15s;
+    }
+    #msg-input::placeholder { color: var(--text-mute); }
+    #msg-input:focus { border-color: var(--blue); }
+
+    #send-btn {
+      background: transparent; border: none; color: var(--text-mute);
+      cursor: pointer; padding: 6px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0; transition: color .15s, background .15s;
+    }
+    #send-btn:hover  { color: var(--blue); background: rgba(62,166,255,.1); }
+    #send-btn.active { color: var(--blue); }
+    #send-btn:active { transform: scale(.9); }
+
+    /* ══════════════════════════════════
+       JOIN MODAL
+    ══════════════════════════════════ */
+    #modal-overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,.8);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 200; padding: 16px;
+      backdrop-filter: blur(4px);
+    }
+    #modal-overlay.hidden { display: none; }
+
+    #modal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 28px 24px 22px;
+      width: min(360px, 100%);
+      box-shadow: 0 16px 60px rgba(0,0,0,.7);
+    }
+    .modal-logo { display: flex; align-items: center; gap: 8px; margin-bottom: 18px; }
+    .modal-logo svg { color: var(--accent); }
+    .modal-logo span { font-size: 16px; font-weight: 600; }
+    #modal h2 { font-size: 16px; font-weight: 500; margin-bottom: 4px; }
+    #modal p  { font-size: 13px; color: var(--text-mute); margin-bottom: 18px; line-height: 1.5; }
+    #name-input {
+      width: 100%; background: var(--bg);
+      border: 1px solid var(--border); border-radius: 4px;
+      padding: 10px 12px; font-size: 14px; color: var(--text);
+      outline: none; margin-bottom: 12px; font-family: inherit;
+      transition: border-color .15s;
+    }
+    #name-input::placeholder { color: var(--text-mute); }
+    #name-input:focus { border-color: var(--blue); }
+    #join-btn {
+      width: 100%; background: var(--blue); color: #0f0f0f;
+      border: none; border-radius: 4px; padding: 10px;
+      font-size: 14px; font-weight: 600; cursor: pointer;
+      font-family: inherit; transition: background .15s;
+    }
+    #join-btn:hover  { background: #5ab4ff; }
+    #join-btn:active { background: #2d8fe8; }
+
+    @media (max-width: 480px) {
+      .msg { padding: 3px 12px; }
+      #input-area { padding: 8px 10px; padding-bottom: max(8px, env(safe-area-inset-bottom)); }
+      .msg-time { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Join modal ── -->
+<div id="modal-overlay">
+  <div id="modal">
+    <div class="modal-logo">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M21.58 7.19a2.7 2.7 0 0 0-1.9-1.91C18.04 5 12 5 12 5s-6.04 0-7.68.28a2.7 2.7 0 0 0-1.9 1.91C2 8.83 2 12 2 12s0 3.17.42 4.81a2.7 2.7 0 0 0 1.9 1.91C6 19 12 19 12 19s6.04 0 7.68-.28a2.7 2.7 0 0 0 1.9-1.91C22 15.17 22 12 22 12s0-3.17-.42-4.81ZM10 15V9l5.2 3L10 15Z"/>
+      </svg>
+      <span>Live Chat</span>
+    </div>
+    <h2>Pick a display name</h2>
+    <p>Your name will appear next to your messages in the live chat.</p>
+    <input id="name-input" type="text" placeholder="Display name" maxlength="32" autocomplete="off" spellcheck="false" />
+    <button id="join-btn">Join the chat</button>
+  </div>
+</div>
+
+<!-- ══ HEADER (flex column — always full height, never hidden) ══ -->
+<header>
+
+  <!-- Row 1: live indicator + title + user count -->
+  <div class="header-row1">
+    <div class="live-dot"></div>
+    <span class="header-title">Live chat</span>
+    <span id="user-count">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12Zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8Z"/>
+      </svg>
+      <span id="user-count-num">—</span>
+    </span>
+  </div>
+
+  <!-- Row 2: "Share QR code" tap target — directly BELOW "Live chat" -->
+  <button id="qr-trigger" aria-expanded="true" aria-controls="qr-panel">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M3 11h8V3H3v8Zm2-6h4v4H5V5ZM3 21h8v-8H3v8Zm2-6h4v4H5v-4ZM13 3v8h8V3h-8Zm6 6h-4V5h4v4ZM13 13h2v2h-2v-2Zm2 2h2v2h-2v-2Zm2-2h2v2h-2v-2Zm-4 4h2v2h-2v-2Zm2 2h2v2h-2v-2Zm2-2h2v2h-2v-2Zm0 4h2v2h-2v-2Zm-4 0h2v2h-2v-2Z"/>
+    </svg>
+    <span class="trigger-label">Share QR code</span>
+    <!-- chevron -->
+    <svg class="chevron" width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M7.41 8.59 12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41Z"/>
+    </svg>
+  </button>
+
+  <!-- Row 3: QR panel — starts open, toggled by row 2 -->
+  <div id="qr-panel" class="open">
+    <div class="qr-img-wrap">
+      <img src="/qr-code.png" alt="Scan to join" draggable="false" />
+    </div>
+    <div class="qr-info">
+      <div class="qr-eyebrow">Join on your phone</div>
+      <div class="qr-headline">Scan to open Live Chat</div>
+      <div class="qr-sub">Point your camera — no app needed.</div>
+      <div class="qr-url" id="qr-url-copy" title="Click to copy">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M17 7H7c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V9c0-1.1-.9-2-2-2Zm0 12H7V9h10v10ZM19 3H9c-1.1 0-2 .9-2 2h10c1.1 0 2 .9 2 2v10c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2Z"/>
+        </svg>
+        <span id="site-url">loading…</span>
+      </div>
+      <div id="copy-toast" class="hidden">Copied!</div>
+    </div>
+  </div>
+
+</header>
+
+<!-- ── Status bar ── -->
+<div id="status-bar"></div>
+
+<!-- ── Chat area ── -->
+<div id="chat-wrap">
+  <div id="chat-feed">
+    <div id="empty-state">
+      <svg width="40" height="40" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2Z"/>
+      </svg>
+      No messages yet — say hello!
+    </div>
+  </div>
+  <button id="jump-btn" aria-label="Jump to latest">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M20 12l-1.41-1.41L13 16.17V4h-2v12.17l-5.58-5.59L4 12l8 8 8-8Z"/>
+    </svg>
+    New messages
+  </button>
+</div>
+
+<!-- ── Input area ── -->
+<div id="input-area">
+  <div class="input-row">
+    <div id="my-avatar"></div>
+    <input id="msg-input" type="text" placeholder="Say something…" maxlength="500" autocomplete="off" spellcheck="true" enterkeyhint="send" />
+    <button id="send-btn" aria-label="Send">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M2.01 21 23 12 2.01 3 2 10l15 2-15 2 .01 7Z"/>
+      </svg>
+    </button>
+  </div>
+</div>
+
+<script>
+  const COLORS = [
+    '#ff6b6b','#ff9f43','#ffd32a','#0be881','#05c46b',
+    '#3dc1d3','#4bcffa','#575fcf','#a29bfe','#fd79a8',
+    '#e17055','#00b894','#00cec9','#6c5ce7','#fdcb6e',
+  ];
+
+  function pickColor(u) {
+    let h = 0;
+    for (let i = 0; i < u.length; i++) h = u.charCodeAt(i) + ((h << 5) - h);
+    return COLORS[Math.abs(h) % COLORS.length];
+  }
+  const initial = u => u.trim()[0].toUpperCase();
+  const fmtTime = iso => new Date(iso).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
+  const escHtml = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+  let myUsername = localStorage.getItem('chat_username') || '';
+  let myColor    = localStorage.getItem('chat_color')    || '';
+  let socket = null, autoScroll = true;
+
+  const modalOverlay = document.getElementById('modal-overlay');
+  const nameInput    = document.getElementById('name-input');
+  const joinBtn      = document.getElementById('join-btn');
+  const chatFeed     = document.getElementById('chat-feed');
+  const emptyState   = document.getElementById('empty-state');
+  const msgInput     = document.getElementById('msg-input');
+  const sendBtn      = document.getElementById('send-btn');
+  const statusBar    = document.getElementById('status-bar');
+  const userCountEl  = document.getElementById('user-count-num');
+  const jumpBtn      = document.getElementById('jump-btn');
+  const myAvatar     = document.getElementById('my-avatar');
+  const qrTrigger    = document.getElementById('qr-trigger');
+  const qrPanel      = document.getElementById('qr-panel');
+  const siteUrl      = document.getElementById('site-url');
+  const qrUrlCopy    = document.getElementById('qr-url-copy');
+  const copyToast    = document.getElementById('copy-toast');
+
+  // Populate URL chip
+  const pageUrl = window.location.origin;
+  siteUrl.textContent = pageUrl.replace(/^https?:\/\//, '');
+
+  // Toggle QR panel open/closed
+  qrTrigger.addEventListener('click', () => {
+    const isOpen = qrPanel.classList.toggle('open');
+    qrTrigger.classList.toggle('open', isOpen);
+    qrTrigger.setAttribute('aria-expanded', isOpen);
+  });
+  // Mark trigger open on load (panel starts open)
+  qrTrigger.classList.add('open');
+
+  // Copy URL
+  let toastTimer;
+  qrUrlCopy.addEventListener('click', () => {
+    navigator.clipboard.writeText(pageUrl).then(() => {
+      copyToast.classList.remove('hidden');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => copyToast.classList.add('hidden'), 2000);
+    });
+  });
+
+  // Send button highlight
+  msgInput.addEventListener('input', () => {
+    sendBtn.classList.toggle('active', msgInput.value.trim().length > 0);
+  });
+
+  // Auto-scroll
+  chatFeed.addEventListener('scroll', () => {
+    const dist = chatFeed.scrollHeight - chatFeed.scrollTop - chatFeed.clientHeight;
+    autoScroll = dist < 80;
+    jumpBtn.classList.toggle('visible', !autoScroll);
+  });
+  jumpBtn.addEventListener('click', () => {
+    autoScroll = true;
+    jumpBtn.classList.remove('visible');
+    chatFeed.scrollTo({ top: chatFeed.scrollHeight, behavior: 'smooth' });
+  });
+  function scrollToBottom(force) {
+    if (force || autoScroll) chatFeed.scrollTop = chatFeed.scrollHeight;
+  }
+
+  // Render message
+  function renderMessage(msg) {
+    if (emptyState.isConnected) emptyState.remove();
+    const color = msg.color || pickColor(msg.username);
+    const row = document.createElement('div');
+    row.className = 'msg';
+    row.innerHTML =
+      `<div class="avatar" style="background:${color}">${escHtml(initial(msg.username))}</div>` +
+      `<div class="msg-content">` +
+        `<span class="msg-username" style="color:${color}">${escHtml(msg.username)}</span>` +
+        `<span class="msg-text">${escHtml(msg.text)}</span>` +
+        `<span class="msg-time">${fmtTime(msg.timestamp)}</span>` +
+      `</div>`;
+    chatFeed.appendChild(row);
+    scrollToBottom();
+  }
+
+  function updateMyAvatar() {
+    myAvatar.style.background = myColor;
+    myAvatar.textContent = myUsername ? initial(myUsername) : '';
+  }
+
+  // Socket
+  function connect() {
+    setStatus('connecting', 'Connecting…');
+    socket = io({ transports: ['websocket', 'polling'], auth: { color: myColor } });
+    socket.on('connect',       () => setStatus('', ''));
+    socket.on('disconnect',    () => setStatus('error', 'Disconnected — reconnecting…'));
+    socket.on('connect_error', () => setStatus('error', 'Connection error — retrying…'));
+    socket.on('message_history', msgs => {
+      chatFeed.innerHTML = '';
+      if (msgs.length === 0) { chatFeed.appendChild(emptyState); }
+      else { msgs.forEach(renderMessage); scrollToBottom(true); }
+    });
+    socket.on('new_message', renderMessage);
+    socket.on('user_count', n => { userCountEl.textContent = n; });
+  }
+
+  function setStatus(type, text) {
+    statusBar.className = type;
+    statusBar.textContent = text;
+  }
+
+  // Send
+  function sendMessage() {
+    const text = msgInput.value.trim();
+    if (!text || !socket?.connected) return;
+    socket.emit('send_message', { username: myUsername, text });
+    msgInput.value = '';
+    sendBtn.classList.remove('active');
+    autoScroll = true;
+    jumpBtn.classList.remove('visible');
+  }
+  sendBtn.addEventListener('click', sendMessage);
+  msgInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+  });
+
+  // Join
+  function joinChat() {
+    const name = nameInput.value.trim();
+    if (!name) { nameInput.focus(); return; }
+    myUsername = name;
+    myColor = COLORS[Math.floor(Math.random() * COLORS.length)];
+    localStorage.setItem('chat_username', myUsername);
+    localStorage.setItem('chat_color', myColor);
+    modalOverlay.classList.add('hidden');
+    updateMyAvatar();
+    if (window.innerWidth > 640) msgInput.focus();
+    connect();
+  }
+  joinBtn.addEventListener('click', joinChat);
+  nameInput.addEventListener('keydown', e => { if (e.key === 'Enter') joinChat(); });
+
+  // Init
+  if (myUsername) {
+    modalOverlay.classList.add('hidden');
+    updateMyAvatar();
+    connect();
+  } else {
+    nameInput.focus();
+  }
+</script>
+</body>
+</html>

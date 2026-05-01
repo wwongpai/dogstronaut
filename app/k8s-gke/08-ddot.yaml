@@ -1,0 +1,211 @@
+# Datadog Distribution of OpenTelemetry (DDOT) Collector
+# Deployed as DaemonSet in dogstronaut namespace to share datadog-secret
+# Receives dd-trace format on :8127, fans out to Datadog + Jaeger
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ddot-collector
+  namespace: dogstronaut
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: ddot-collector
+rules:
+  - apiGroups: [""]
+    resources: ["nodes", "nodes/proxy", "nodes/stats", "pods", "endpoints", "services", "namespaces"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "daemonsets", "replicasets", "statefulsets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["batch"]
+    resources: ["jobs", "cronjobs"]
+    verbs: ["get", "list", "watch"]
+  - nonResourceURLs: ["/metrics"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: ddot-collector
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: ddot-collector
+subjects:
+  - kind: ServiceAccount
+    name: ddot-collector
+    namespace: dogstronaut
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ddot-collector-config
+  namespace: dogstronaut
+data:
+  config.yaml: |
+    extensions:
+      health_check:
+        endpoint: 0.0.0.0:13133
+
+    receivers:
+      # Receives dd-trace msgpack format from Node.js apps on port 8127
+      datadog:
+        endpoint: 0.0.0.0:8127
+        read_timeout: 60s
+      # Also accepts OTLP for direct OTel instrumentation
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+
+    processors:
+      memory_limiter:
+        check_interval: 1s
+        limit_mib: 400
+        spike_limit_mib: 100
+      # Enriches spans with Kubernetes pod/deployment metadata
+      k8sattributes:
+        auth_type: serviceAccount
+        passthrough: false
+        filter:
+          node_from_env_var: KUBE_NODE_NAME
+        extract:
+          metadata:
+            - k8s.pod.name
+            - k8s.pod.uid
+            - k8s.namespace.name
+            - k8s.node.name
+            - k8s.deployment.name
+            - k8s.replicaset.name
+            - container.id
+            - container.image.name
+            - container.image.tag
+        pod_association:
+          - sources:
+              - from: resource_attribute
+                name: k8s.pod.ip
+          - sources:
+              - from: connection
+      batch:
+        timeout: 10s
+        send_batch_size: 1024
+
+    connectors:
+      # Computes APM stats (throughput, error rate, p99 latency) from spans
+      # compute_stats_by_span_kind: true enables HTTP-specific metric dimensions
+      # (http_status_code, etc.) for OTLP spans using OTel span kinds
+      datadog/connector:
+        traces:
+          compute_stats_by_span_kind: true
+
+    exporters:
+      # Sends traces + metrics to Datadog backend
+      datadog:
+        api:
+          key: ${DD_API_KEY}
+          site: datadoghq.com
+        traces:
+          span_name_remappings:
+            "http.server.request": "web.request"
+      # Sends traces to Jaeger (silo tool for demo contrast)
+      otlp/jaeger:
+        endpoint: jaeger.observability-silo.svc.cluster.local:4317
+        tls:
+          insecure: true
+
+    service:
+      extensions: [health_check]
+      pipelines:
+        traces:
+          receivers: [datadog, otlp]
+          processors: [memory_limiter, k8sattributes, batch]
+          exporters: [datadog, datadog/connector, otlp/jaeger]
+        metrics:
+          receivers: [otlp, datadog/connector]
+          processors: [memory_limiter, batch]
+          exporters: [datadog]
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: ddot-collector
+  namespace: dogstronaut
+  labels:
+    app: ddot-collector
+spec:
+  selector:
+    matchLabels:
+      app: ddot-collector
+  updateStrategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: ddot-collector
+    spec:
+      serviceAccountName: ddot-collector
+      containers:
+        - name: ddot-collector
+          image: otel/opentelemetry-collector-contrib:0.121.0
+          args: ["--config=/etc/otelcol-contrib/config.yaml"]
+          ports:
+            - name: dd-receiver
+              containerPort: 8127
+              hostPort: 8127
+              protocol: TCP
+            - name: otlp-grpc
+              containerPort: 4317
+              hostPort: 4317
+              protocol: TCP
+            - name: otlp-http
+              containerPort: 4318
+              hostPort: 4318
+              protocol: TCP
+            - name: health
+              containerPort: 13133
+              protocol: TCP
+          env:
+            - name: DD_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: datadog-secret
+                  key: api-key
+            - name: KUBE_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: MY_POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 13133
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 13133
+            initialDelaySeconds: 20
+            periodSeconds: 30
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          volumeMounts:
+            - name: config
+              mountPath: /etc/otelcol-contrib
+      volumes:
+        - name: config
+          configMap:
+            name: ddot-collector-config
+      terminationGracePeriodSeconds: 30

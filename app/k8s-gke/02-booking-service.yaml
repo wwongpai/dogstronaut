@@ -1,0 +1,132 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: booking-service
+  namespace: dogstronaut
+  labels:
+    app: booking-service
+    tags.datadoghq.com/env: demo
+    tags.datadoghq.com/service: dogstronaut-booking
+    tags.datadoghq.com/version: "1.0.0"
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: booking-service
+  template:
+    metadata:
+      labels:
+        app: booking-service
+        tags.datadoghq.com/env: demo
+        tags.datadoghq.com/service: dogstronaut-booking
+        tags.datadoghq.com/version: "1.0.0"
+      annotations:
+        ad.datadoghq.com/booking-service.logs: '[{"source":"nodejs","service":"dogstronaut-booking"}]'
+        ad.datadoghq.com/booking-service.checks: |
+          {
+            "network_path": {
+              "instances": [
+                {
+                  "hostname": "payment-service.dogstronaut.svc.cluster.local",
+                  "protocol": "TCP",
+                  "port": 4002,
+                  "source_service": "dogstronaut-booking",
+                  "destination_service": "dogstronaut-payment",
+                  "tags": ["env:demo", "source_service:dogstronaut-booking", "destination_service:dogstronaut-payment"]
+                }
+              ]
+            }
+          }
+    spec:
+      containers:
+        - name: booking-service
+          image: wwongpai/dogstronaut-booking:v8
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 4001
+          env:
+            - name: NODE_ENV
+              value: "demo"
+            - name: PORT
+              value: "4001"
+            - name: DB_HOST
+              value: "postgres"
+            - name: DB_PORT
+              value: "5432"
+            - name: POSTGRES_DB
+              value: "dogstronaut"
+            - name: POSTGRES_USER
+              value: "postgres"
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: dogstronaut-secrets
+                  key: postgres-password
+            - name: DD_SERVICE
+              value: "dogstronaut-booking"
+            - name: DD_ENV
+              value: "demo"
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: "deployment.environment=demo"
+            - name: DD_VERSION
+              value: "1.0.0"
+            - name: DD_AGENT_HOST
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.hostIP
+            - name: DD_LOGS_INJECTION
+              value: "true"
+            - name: DD_PROFILING_ENABLED
+              value: "true"
+            - name: DD_TRACE_SAMPLE_RATE
+              value: "1"
+            - name: DD_TRACE_AGENT_URL
+              value: "http://$(DD_AGENT_HOST):8126"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://$(DD_AGENT_HOST):4318"
+            - name: FLEET_SERVICE_URL
+              value: "http://fleet-service:4003"
+            - name: PAYMENT_SERVICE_URL
+              value: "http://payment-service:4002"
+            - name: SEAT_CHECK_SERVICE_URL
+              value: "http://seat-check-service:4005"
+            - name: LOYALTY_SERVICE_URL
+              value: "http://loyalty-service:4006"
+            - name: LAUNCH_CONTROL_SERVICE_URL
+              value: "http://launch-control-service:4007"
+            - name: NOTIFICATION_SERVICE_URL
+              value: "http://notification-service:4008"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 4001
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 4001
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "250m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: booking-service
+  namespace: dogstronaut
+  labels:
+    app: booking-service
+spec:
+  type: ClusterIP
+  selector:
+    app: booking-service
+  ports:
+    - port: 4001
+      targetPort: 4001

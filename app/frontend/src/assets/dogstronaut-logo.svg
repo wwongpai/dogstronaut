@@ -1,0 +1,195 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <defs>
+    <radialGradient id="bgGrad" cx="50%" cy="45%" r="55%">
+      <stop offset="0%" stop-color="#dde8f2"/>
+      <stop offset="100%" stop-color="#c0cedd"/>
+    </radialGradient>
+    <radialGradient id="furGrad" cx="42%" cy="36%" r="62%">
+      <stop offset="0%" stop-color="#fbd060"/>
+      <stop offset="48%" stop-color="#e8a82e"/>
+      <stop offset="100%" stop-color="#c47e18"/>
+    </radialGradient>
+    <radialGradient id="furDark" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#e8a82e"/>
+      <stop offset="100%" stop-color="#b06818"/>
+    </radialGradient>
+    <radialGradient id="helmetGrad" cx="34%" cy="28%" r="68%">
+      <stop offset="0%" stop-color="#f8fafc"/>
+      <stop offset="60%" stop-color="#e4ecf4"/>
+      <stop offset="100%" stop-color="#c4d0de"/>
+    </radialGradient>
+    <linearGradient id="suitGrad" x1="18%" y1="0%" x2="82%" y2="100%">
+      <stop offset="0%" stop-color="#f6f8fc"/>
+      <stop offset="100%" stop-color="#d6e0ec"/>
+    </linearGradient>
+    <linearGradient id="suitSide" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#eef2f8"/>
+      <stop offset="100%" stop-color="#c8d4e4"/>
+    </linearGradient>
+    <radialGradient id="visorGrad" cx="32%" cy="28%" r="72%">
+      <stop offset="0%" stop-color="#cce0f8" stop-opacity="0.65"/>
+      <stop offset="70%" stop-color="#90b8e0" stop-opacity="0.45"/>
+      <stop offset="100%" stop-color="#6090c0" stop-opacity="0.35"/>
+    </radialGradient>
+    <linearGradient id="ddGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#9b6fff"/>
+      <stop offset="100%" stop-color="#6d28d9"/>
+    </linearGradient>
+    <radialGradient id="noseGrad" cx="40%" cy="35%" r="60%">
+      <stop offset="0%" stop-color="#2e1a08"/>
+      <stop offset="100%" stop-color="#0e0804"/>
+    </radialGradient>
+    <filter id="dropShadow">
+      <feDropShadow dx="0" dy="2" stdDeviation="2.5" flood-color="#7090a8" flood-opacity="0.22"/>
+    </filter>
+    <clipPath id="bgClip">
+      <circle cx="100" cy="100" r="96"/>
+    </clipPath>
+  </defs>
+
+  <!-- Background circle -->
+  <circle cx="100" cy="100" r="96" fill="url(#bgGrad)"/>
+
+  <!-- === ENTIRE DOG — tilted -18° floating pose === -->
+  <g transform="translate(101,107) rotate(-18)" clip-path="url(#bgClip)">
+
+    <!-- TAIL — golden curl, upper right -->
+    <path d="M 32 18 Q 62 8 68 -14 Q 72 -32 58 -38"
+          fill="none" stroke="#c87818" stroke-width="15" stroke-linecap="round"/>
+    <path d="M 32 18 Q 62 8 68 -14 Q 72 -32 58 -38"
+          fill="none" stroke="#e8a82e" stroke-width="11" stroke-linecap="round"/>
+    <path d="M 32 18 Q 62 8 68 -14 Q 72 -32 58 -38"
+          fill="none" stroke="#fbd060" stroke-width="6" stroke-linecap="round" opacity="0.55"/>
+
+    <!-- BACK RIGHT LEG -->
+    <path d="M 20 44 Q 30 58 28 68" fill="none" stroke="#d4e0ec" stroke-width="17" stroke-linecap="round"/>
+    <path d="M 20 44 Q 30 58 28 68" fill="none" stroke="url(#suitGrad)" stroke-width="14" stroke-linecap="round"/>
+    <ellipse cx="26" cy="70" rx="13" ry="8" fill="url(#furDark)" stroke="#a06010" stroke-width="1.5" transform="rotate(8,26,70)"/>
+    <ellipse cx="18" cy="76" rx="5" ry="3.8" fill="url(#furDark)" stroke="#a06010" stroke-width="1.2"/>
+    <ellipse cx="26" cy="78" rx="5" ry="3.8" fill="url(#furDark)" stroke="#a06010" stroke-width="1.2"/>
+    <ellipse cx="34" cy="76" rx="5" ry="3.8" fill="url(#furDark)" stroke="#a06010" stroke-width="1.2"/>
+
+    <!-- BACK LEFT LEG -->
+    <path d="M -20 44 Q -30 58 -28 68" fill="none" stroke="#d4e0ec" stroke-width="17" stroke-linecap="round"/>
+    <path d="M -20 44 Q -30 58 -28 68" fill="none" stroke="url(#suitGrad)" stroke-width="14" stroke-linecap="round"/>
+    <ellipse cx="-26" cy="70" rx="13" ry="8" fill="url(#furDark)" stroke="#a06010" stroke-width="1.5" transform="rotate(-8,-26,70)"/>
+    <ellipse cx="-34" cy="76" rx="5" ry="3.8" fill="url(#furDark)" stroke="#a06010" stroke-width="1.2"/>
+    <ellipse cx="-26" cy="78" rx="5" ry="3.8" fill="url(#furDark)" stroke="#a06010" stroke-width="1.2"/>
+    <ellipse cx="-18" cy="76" rx="5" ry="3.8" fill="url(#furDark)" stroke="#a06010" stroke-width="1.2"/>
+
+    <!-- SUIT BODY -->
+    <ellipse cx="0" cy="30" rx="36" ry="29" fill="url(#suitGrad)" stroke="#bac8d8" stroke-width="2" filter="url(#dropShadow)"/>
+
+    <!-- FRONT RIGHT ARM -->
+    <path d="M 28 16 Q 52 20 55 34" fill="none" stroke="#c8d4e4" stroke-width="18" stroke-linecap="round"/>
+    <path d="M 28 16 Q 52 20 55 34" fill="none" stroke="url(#suitSide)" stroke-width="14" stroke-linecap="round"/>
+    <circle cx="56" cy="36" r="9.5" fill="url(#furDark)" stroke="#a06010" stroke-width="1.5"/>
+    <ellipse cx="49" cy="43" rx="5" ry="3.5" fill="url(#furDark)" stroke="#a06010" stroke-width="1.2"/>
+    <ellipse cx="57" cy="45" rx="5" ry="3.5" fill="url(#furDark)" stroke="#a06010" stroke-width="1.2"/>
+    <ellipse cx="65" cy="43" rx="5" ry="3.5" fill="url(#furDark)" stroke="#a06010" stroke-width="1.2"/>
+
+    <!-- FRONT LEFT ARM -->
+    <path d="M -28 16 Q -52 20 -55 34" fill="none" stroke="#c8d4e4" stroke-width="18" stroke-linecap="round"/>
+    <path d="M -28 16 Q -52 20 -55 34" fill="none" stroke="url(#suitSide)" stroke-width="14" stroke-linecap="round"/>
+    <circle cx="-56" cy="36" r="9.5" fill="url(#furDark)" stroke="#a06010" stroke-width="1.5"/>
+    <ellipse cx="-65" cy="43" rx="5" ry="3.5" fill="url(#furDark)" stroke="#a06010" stroke-width="1.2"/>
+    <ellipse cx="-57" cy="45" rx="5" ry="3.5" fill="url(#furDark)" stroke="#a06010" stroke-width="1.2"/>
+    <ellipse cx="-49" cy="43" rx="5" ry="3.5" fill="url(#furDark)" stroke="#a06010" stroke-width="1.2"/>
+
+    <!-- CHEST PANEL -->
+    <rect x="-17" y="14" width="34" height="25" rx="5" fill="#edf2f8" stroke="#bac8d8" stroke-width="1.5"/>
+    <!-- Orange/amber control buttons -->
+    <circle cx="-7" cy="22" r="4" fill="#ff8800" stroke="#cc6600" stroke-width="1.2"/>
+    <circle cx="5"  cy="22" r="4" fill="#ff8800" stroke="#cc6600" stroke-width="1.2"/>
+    <circle cx="-7" cy="32" r="4" fill="#ffbb00" stroke="#cc9900" stroke-width="1.2"/>
+    <circle cx="5"  cy="32" r="4" fill="#ffbb00" stroke="#cc9900" stroke-width="1.2"/>
+    <!-- DD badge -->
+    <rect x="11" y="17" width="18" height="11" rx="2.5" fill="url(#ddGrad)" stroke="#8060e0" stroke-width="0.8"/>
+    <text x="20" y="25.5" text-anchor="middle" font-family="Arial Black, Arial, sans-serif" font-size="7.5" font-weight="900" fill="white">DD</text>
+
+    <!-- NECK COLLAR RING -->
+    <ellipse cx="0" cy="-4" rx="25" ry="8" fill="url(#suitGrad)" stroke="#bac8d8" stroke-width="2"/>
+    <ellipse cx="0" cy="-4" rx="22" ry="6" fill="none" stroke="#d8e0ec" stroke-width="1" opacity="0.8"/>
+
+    <!-- HELMET CONNECTOR TUBES (left side) -->
+    <path d="M -30 -16 Q -42 -8 -40 2"  fill="none" stroke="#8888aa" stroke-width="5.5" stroke-linecap="round"/>
+    <path d="M -30 -20 Q -44 -12 -42 -2" fill="none" stroke="#8888aa" stroke-width="5.5" stroke-linecap="round"/>
+    <path d="M -30 -24 Q -46 -16 -44 -6" fill="none" stroke="#8888aa" stroke-width="5.5" stroke-linecap="round"/>
+    <!-- Tube highlights -->
+    <path d="M -30 -16 Q -42 -8 -40 2"  fill="none" stroke="#b0b0cc" stroke-width="2" stroke-linecap="round" opacity="0.7"/>
+    <path d="M -30 -20 Q -44 -12 -42 -2" fill="none" stroke="#b0b0cc" stroke-width="2" stroke-linecap="round" opacity="0.7"/>
+    <path d="M -30 -24 Q -46 -16 -44 -6" fill="none" stroke="#b0b0cc" stroke-width="2" stroke-linecap="round" opacity="0.7"/>
+
+    <!-- HELMET SHELL -->
+    <circle cx="0" cy="-42" r="44" fill="url(#helmetGrad)" stroke="#b0bec8" stroke-width="2.5" filter="url(#dropShadow)"/>
+
+    <!-- FLOPPY EARS inside helmet -->
+    <ellipse cx="-26" cy="-34" rx="13" ry="20" fill="#e8a82e" stroke="#b87018" stroke-width="1.5" transform="rotate(-16,-26,-34)"/>
+    <ellipse cx="-26" cy="-32" rx="7.5" ry="13" fill="#c88020" transform="rotate(-16,-26,-32)" opacity="0.65"/>
+    <ellipse cx="26"  cy="-34" rx="13" ry="20" fill="#e8a82e" stroke="#b87018" stroke-width="1.5" transform="rotate(16,26,-34)"/>
+    <ellipse cx="26"  cy="-32" rx="7.5" ry="13" fill="#c88020" transform="rotate(16,26,-32)" opacity="0.65"/>
+
+    <!-- VISOR (clear tinted glass) -->
+    <ellipse cx="2" cy="-43" rx="31" ry="29" fill="url(#visorGrad)"/>
+
+    <!-- DOG FACE -->
+    <circle cx="2" cy="-43" r="25" fill="url(#furGrad)"/>
+
+    <!-- Forehead lighter patch -->
+    <ellipse cx="2" cy="-56" rx="15" ry="10" fill="#fde070" opacity="0.7"/>
+
+    <!-- Cheek puffs -->
+    <ellipse cx="-13" cy="-37" rx="10" ry="7" fill="#d49028" opacity="0.38"/>
+    <ellipse cx="17"  cy="-37" rx="10" ry="7" fill="#d49028" opacity="0.38"/>
+
+    <!-- EYE WHITES -->
+    <circle cx="-8" cy="-47" r="7.5" fill="white"/>
+    <circle cx="12" cy="-47" r="7.5" fill="white"/>
+    <!-- Iris dark -->
+    <circle cx="-7" cy="-46" r="5.2" fill="#1e0e04"/>
+    <circle cx="13" cy="-46" r="5.2" fill="#1e0e04"/>
+    <!-- Iris amber ring -->
+    <circle cx="-7" cy="-46" r="3.5" fill="#7a3a0a"/>
+    <circle cx="13" cy="-46" r="3.5" fill="#7a3a0a"/>
+    <!-- Pupils -->
+    <circle cx="-6.5" cy="-46" r="2.3" fill="#060402"/>
+    <circle cx="13.5" cy="-46" r="2.3" fill="#060402"/>
+    <!-- Eye shine highlights -->
+    <circle cx="-5"  cy="-48" r="1.5" fill="white" opacity="0.92"/>
+    <circle cx="15"  cy="-48" r="1.5" fill="white" opacity="0.92"/>
+    <circle cx="-8.5" cy="-44" r="0.7" fill="white" opacity="0.5"/>
+    <circle cx="11.5" cy="-44" r="0.7" fill="white" opacity="0.5"/>
+
+    <!-- EYEBROWS — friendly raised -->
+    <path d="M -16 -54 Q -8 -59 0 -54"  fill="none" stroke="#8a4810" stroke-width="2.2" stroke-linecap="round"/>
+    <path d="M 4  -54 Q 12 -59 20 -54"  fill="none" stroke="#8a4810" stroke-width="2.2" stroke-linecap="round"/>
+
+    <!-- MUZZLE lighter area -->
+    <ellipse cx="2" cy="-34" rx="15" ry="10.5" fill="#f0b438" opacity="0.58"/>
+
+    <!-- NOSE -->
+    <ellipse cx="2" cy="-37" rx="7.5" ry="5.2" fill="url(#noseGrad)"/>
+    <ellipse cx="0" cy="-38.5" rx="2.8" ry="1.6" fill="#3a2010" opacity="0.5"/>
+    <ellipse cx="0.5" cy="-39" rx="1.1" ry="0.7" fill="white" opacity="0.28"/>
+
+    <!-- MOUTH happy curve -->
+    <path d="M -5 -29 Q 2 -23 9 -29" fill="none" stroke="#1e1008" stroke-width="2" stroke-linecap="round"/>
+    <line x1="2" y1="-29" x2="2" y2="-26" stroke="#1e1008" stroke-width="1.5" stroke-linecap="round"/>
+
+    <!-- TONGUE -->
+    <ellipse cx="2" cy="-22" rx="6" ry="4.5" fill="#e84870"/>
+    <line x1="2" y1="-26" x2="2" y2="-18" stroke="#c02850" stroke-width="1.2" stroke-linecap="round"/>
+    <ellipse cx="0" cy="-23.5" rx="2" ry="1.5" fill="#f07090" opacity="0.55"/>
+
+    <!-- VISOR RIM -->
+    <ellipse cx="2" cy="-43" rx="31" ry="29" fill="none" stroke="#7890a8" stroke-width="3.5"/>
+    <ellipse cx="2" cy="-43" rx="31" ry="29" fill="none" stroke="#d8e4f0" stroke-width="1" opacity="0.75"/>
+    <!-- Glass sheen -->
+    <ellipse cx="-13" cy="-62" rx="9" ry="5" fill="white" opacity="0.2" transform="rotate(-28,-13,-62)"/>
+    <ellipse cx="-9"  cy="-67" rx="4" ry="2" fill="white" opacity="0.16" transform="rotate(-28,-9,-67)"/>
+
+    <!-- HELMET outer ring -->
+    <circle cx="0" cy="-42" r="44" fill="none" stroke="#90a0b0" stroke-width="2.5"/>
+
+  </g>
+</svg>

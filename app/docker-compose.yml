@@ -1,0 +1,177 @@
+version: '3.8'
+
+services:
+  # ─────────────────────────────────────────────────────────────
+  # PostgreSQL Database
+  # ─────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:15-alpine
+    container_name: cosmocab-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - cosmocab-net
+
+  # ─────────────────────────────────────────────────────────────
+  # Datadog Agent
+  # ─────────────────────────────────────────────────────────────
+  datadog-agent:
+    image: gcr.io/datadoghq/agent:7
+    container_name: cosmocab-datadog-agent
+    environment:
+      - DD_API_KEY=${DD_API_KEY}
+      - DD_APM_ENABLED=true
+      - DD_APM_NON_LOCAL_TRAFFIC=true
+      - DD_LOGS_ENABLED=true
+      - DD_LOGS_CONFIG_CONTAINER_COLLECT_ALL=true
+      - DD_DOGSTATSD_NON_LOCAL_TRAFFIC=true
+      - DD_ENV=${DD_ENV:-demo}
+      - DD_SITE=datadoghq.com
+      - DD_CONTAINER_EXCLUDE=name:cosmocab-datadog-agent
+      - DD_APM_RECEIVER_SOCKET=/tmp/apm.socket
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /proc/:/host/proc/:ro
+      - /sys/fs/cgroup/:/host/sys/fs/cgroup:ro
+    ports:
+      - "8125:8125/udp"
+      - "8126:8126"
+    networks:
+      - cosmocab-net
+
+  # ─────────────────────────────────────────────────────────────
+  # Fleet Service
+  # ─────────────────────────────────────────────────────────────
+  fleet-service:
+    build:
+      context: ./fleet-service
+      dockerfile: Dockerfile
+    container_name: cosmocab-fleet
+    ports:
+      - "4003:4003"
+    environment:
+      - NODE_ENV=production
+      - PORT=4003
+      - DD_AGENT_HOST=datadog-agent
+      - DD_ENV=${DD_ENV:-demo}
+      - DD_VERSION=1.0.0
+      - DD_SERVICE=cosmocab-fleet
+      - LOG_LEVEL=info
+      - CHAOS_MODE=${CHAOS_MODE:-normal}
+    depends_on:
+      datadog-agent:
+        condition: service_started
+    labels:
+      com.datadoghq.ad.logs: '[{"source":"nodejs","service":"cosmocab-fleet"}]'
+    networks:
+      - cosmocab-net
+    restart: unless-stopped
+
+  # ─────────────────────────────────────────────────────────────
+  # Payment Service
+  # ─────────────────────────────────────────────────────────────
+  payment-service:
+    build:
+      context: ./payment-service
+      dockerfile: Dockerfile
+    container_name: cosmocab-payment
+    ports:
+      - "4002:4002"
+    environment:
+      - NODE_ENV=production
+      - PORT=4002
+      - DD_AGENT_HOST=datadog-agent
+      - DD_ENV=${DD_ENV:-demo}
+      - DD_VERSION=1.0.0
+      - DD_SERVICE=cosmocab-payment
+      - FLEET_SERVICE_URL=http://fleet-service:4003
+      - LOG_LEVEL=info
+      - CHAOS_MODE=${CHAOS_MODE:-normal}
+    depends_on:
+      datadog-agent:
+        condition: service_started
+    labels:
+      com.datadoghq.ad.logs: '[{"source":"nodejs","service":"cosmocab-payment"}]'
+    networks:
+      - cosmocab-net
+    restart: unless-stopped
+
+  # ─────────────────────────────────────────────────────────────
+  # Booking Service
+  # ─────────────────────────────────────────────────────────────
+  booking-service:
+    build:
+      context: ./booking-service
+      dockerfile: Dockerfile
+    container_name: cosmocab-booking
+    ports:
+      - "4001:4001"
+    environment:
+      - NODE_ENV=production
+      - PORT=4001
+      - DD_AGENT_HOST=datadog-agent
+      - DD_ENV=${DD_ENV:-demo}
+      - DD_VERSION=1.0.0
+      - DD_SERVICE=cosmocab-booking
+      - PAYMENT_SERVICE_URL=http://payment-service:4002
+      - FLEET_SERVICE_URL=http://fleet-service:4003
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=${POSTGRES_USER}
+      - DB_PASSWORD=${POSTGRES_PASSWORD}
+      - DB_NAME=${POSTGRES_DB}
+      - LOG_LEVEL=info
+      - CHAOS_MODE=${CHAOS_MODE:-normal}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      datadog-agent:
+        condition: service_started
+      payment-service:
+        condition: service_started
+      fleet-service:
+        condition: service_started
+    labels:
+      com.datadoghq.ad.logs: '[{"source":"nodejs","service":"cosmocab-booking"}]'
+    networks:
+      - cosmocab-net
+    restart: unless-stopped
+
+  # ─────────────────────────────────────────────────────────────
+  # Frontend
+  # ─────────────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - VITE_DD_RUM_APPLICATION_ID=${VITE_DD_RUM_APPLICATION_ID}
+        - VITE_DD_RUM_CLIENT_TOKEN=${VITE_DD_RUM_CLIENT_TOKEN}
+        - VITE_DD_ENV=${DD_ENV:-demo}
+    container_name: cosmocab-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - booking-service
+    networks:
+      - cosmocab-net
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+
+networks:
+  cosmocab-net:
+    driver: bridge

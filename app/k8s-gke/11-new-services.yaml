@@ -1,0 +1,376 @@
+---
+# seat-check-service
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: seat-check-service
+  namespace: dogstronaut
+  labels:
+    app: seat-check-service
+    tags.datadoghq.com/env: demo
+    tags.datadoghq.com/service: dogstronaut-seat-check
+    tags.datadoghq.com/version: "1.0.0"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: seat-check-service
+  template:
+    metadata:
+      labels:
+        app: seat-check-service
+        tags.datadoghq.com/env: demo
+        tags.datadoghq.com/service: dogstronaut-seat-check
+        tags.datadoghq.com/version: "1.0.0"
+      annotations:
+        ad.datadoghq.com/seat-check-service.logs: '[{"source":"nodejs","service":"dogstronaut-seat-check"}]'
+    spec:
+      containers:
+        - name: seat-check-service
+          image: wwongpai/dogstronaut-seat-check:v1
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 4005
+          env:
+            - name: NODE_ENV
+              value: "demo"
+            - name: PORT
+              value: "4005"
+            - name: DD_SERVICE
+              value: "dogstronaut-seat-check"
+            - name: DD_ENV
+              value: "demo"
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: "deployment.environment=demo"
+            - name: DD_VERSION
+              value: "1.0.0"
+            - name: DD_AGENT_HOST
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.hostIP
+            - name: DD_LOGS_INJECTION
+              value: "true"
+            - name: DD_PROFILING_ENABLED
+              value: "true"
+            - name: DD_TRACE_SAMPLE_RATE
+              value: "1"
+            - name: DD_TRACE_AGENT_URL
+              value: "http://$(DD_AGENT_HOST):8126"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://$(DD_AGENT_HOST):4318"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 4005
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 4005
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "128Mi"
+              cpu: "200m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: seat-check-service
+  namespace: dogstronaut
+  labels:
+    app: seat-check-service
+spec:
+  type: ClusterIP
+  selector:
+    app: seat-check-service
+  ports:
+    - port: 4005
+      targetPort: 4005
+---
+# loyalty-service
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: loyalty-service
+  namespace: dogstronaut
+  labels:
+    app: loyalty-service
+    tags.datadoghq.com/env: demo
+    tags.datadoghq.com/service: dogstronaut-loyalty
+    tags.datadoghq.com/version: "1.0.0"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: loyalty-service
+  template:
+    metadata:
+      labels:
+        app: loyalty-service
+        tags.datadoghq.com/env: demo
+        tags.datadoghq.com/service: dogstronaut-loyalty
+        tags.datadoghq.com/version: "1.0.0"
+      annotations:
+        ad.datadoghq.com/loyalty-service.logs: '[{"source":"nodejs","service":"dogstronaut-loyalty"}]'
+    spec:
+      containers:
+        - name: loyalty-service
+          image: wwongpai/dogstronaut-loyalty:v2
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 4006
+          env:
+            - name: NODE_ENV
+              value: "demo"
+            - name: PORT
+              value: "4006"
+            - name: DD_SERVICE
+              value: "dogstronaut-loyalty"
+            - name: DD_ENV
+              value: "demo"
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: "deployment.environment=demo"
+            - name: DD_VERSION
+              value: "1.0.0"
+            - name: DD_AGENT_HOST
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.hostIP
+            - name: DD_LOGS_INJECTION
+              value: "true"
+            - name: DD_PROFILING_ENABLED
+              value: "true"
+            - name: DD_TRACE_SAMPLE_RATE
+              value: "1"
+            - name: DD_TRACE_AGENT_URL
+              value: "http://$(DD_AGENT_HOST):8126"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://$(DD_AGENT_HOST):4318"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 4006
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 4006
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "128Mi"
+              cpu: "200m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: loyalty-service
+  namespace: dogstronaut
+  labels:
+    app: loyalty-service
+spec:
+  type: ClusterIP
+  selector:
+    app: loyalty-service
+  ports:
+    - port: 4006
+      targetPort: 4006
+---
+# launch-control-service
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: launch-control-service
+  namespace: dogstronaut
+  labels:
+    app: launch-control-service
+    tags.datadoghq.com/env: demo
+    tags.datadoghq.com/service: dogstronaut-launch-control
+    tags.datadoghq.com/version: "1.0.0"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: launch-control-service
+  template:
+    metadata:
+      labels:
+        app: launch-control-service
+        tags.datadoghq.com/env: demo
+        tags.datadoghq.com/service: dogstronaut-launch-control
+        tags.datadoghq.com/version: "1.0.0"
+      annotations:
+        ad.datadoghq.com/launch-control-service.logs: '[{"source":"nodejs","service":"dogstronaut-launch-control"}]'
+    spec:
+      containers:
+        - name: launch-control-service
+          image: wwongpai/dogstronaut-launch-control:v2
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 4007
+          env:
+            - name: NODE_ENV
+              value: "demo"
+            - name: PORT
+              value: "4007"
+            - name: DD_SERVICE
+              value: "dogstronaut-launch-control"
+            - name: DD_ENV
+              value: "demo"
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: "deployment.environment=demo"
+            - name: DD_VERSION
+              value: "1.0.0"
+            - name: DD_AGENT_HOST
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.hostIP
+            - name: DD_LOGS_INJECTION
+              value: "true"
+            - name: DD_PROFILING_ENABLED
+              value: "true"
+            - name: DD_TRACE_SAMPLE_RATE
+              value: "1"
+            - name: DD_TRACE_AGENT_URL
+              value: "http://$(DD_AGENT_HOST):8126"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://$(DD_AGENT_HOST):4318"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 4007
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 4007
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "128Mi"
+              cpu: "200m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: launch-control-service
+  namespace: dogstronaut
+  labels:
+    app: launch-control-service
+spec:
+  type: ClusterIP
+  selector:
+    app: launch-control-service
+  ports:
+    - port: 4007
+      targetPort: 4007
+---
+# notification-service
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: notification-service
+  namespace: dogstronaut
+  labels:
+    app: notification-service
+    tags.datadoghq.com/env: demo
+    tags.datadoghq.com/service: dogstronaut-notification
+    tags.datadoghq.com/version: "1.0.0"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: notification-service
+  template:
+    metadata:
+      labels:
+        app: notification-service
+        tags.datadoghq.com/env: demo
+        tags.datadoghq.com/service: dogstronaut-notification
+        tags.datadoghq.com/version: "1.0.0"
+      annotations:
+        ad.datadoghq.com/notification-service.logs: '[{"source":"nodejs","service":"dogstronaut-notification"}]'
+    spec:
+      containers:
+        - name: notification-service
+          image: wwongpai/dogstronaut-notification:v2
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 4008
+          env:
+            - name: NODE_ENV
+              value: "demo"
+            - name: PORT
+              value: "4008"
+            - name: DD_SERVICE
+              value: "dogstronaut-notification"
+            - name: DD_ENV
+              value: "demo"
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: "deployment.environment=demo"
+            - name: DD_VERSION
+              value: "1.0.0"
+            - name: DD_AGENT_HOST
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.hostIP
+            - name: DD_LOGS_INJECTION
+              value: "true"
+            - name: DD_PROFILING_ENABLED
+              value: "true"
+            - name: DD_TRACE_SAMPLE_RATE
+              value: "1"
+            - name: DD_TRACE_AGENT_URL
+              value: "http://$(DD_AGENT_HOST):8126"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://$(DD_AGENT_HOST):4318"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 4008
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 4008
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "128Mi"
+              cpu: "200m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: notification-service
+  namespace: dogstronaut
+  labels:
+    app: notification-service
+spec:
+  type: ClusterIP
+  selector:
+    app: notification-service
+  ports:
+    - port: 4008
+      targetPort: 4008

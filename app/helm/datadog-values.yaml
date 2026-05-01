@@ -1,0 +1,74 @@
+# Datadog Agent with embedded DDOT Collector (Datadog Distribution of OpenTelemetry)
+# Secret must be pre-created: kubectl create secret generic datadog-secret --from-literal=api-key=<DD_API_KEY> -n dogstronaut
+# Deploy: helm upgrade --install datadog-agent datadog/datadog -n dogstronaut \
+#           -f app/helm/datadog-values.yaml \
+#           --set-file datadog.otelCollector.config=app/helm/otel-config.yaml
+
+datadog:
+  apiKeyExistingSecret: datadog-secret
+  site: datadoghq.com
+
+  # Embedded DDOT Collector — enables OTel pipeline alongside all Agent features
+  otelCollector:
+    enabled: true
+    ports:
+      - containerPort: "4317"
+        hostPort: "4317"
+        name: otel-grpc
+      - containerPort: "4318"
+        hostPort: "4318"
+        name: otel-http
+
+  # APM — dd-trace format on port 8126 (apps point here via DD_TRACE_AGENT_URL)
+  apm:
+    portEnabled: true
+    port: 8126
+
+  # Log collection from all containers
+  logs:
+    enabled: true
+    containerCollectAll: true
+    containerCollectUsingFiles: true
+
+  # Live Process Monitoring
+  processAgent:
+    enabled: true
+    processCollection: true
+
+  # Continuous Profiler
+  profiling:
+    enabled: true
+
+  # DogStatsD for runtime metrics
+  dogstatsd:
+    useHostPort: true
+    nonLocalTraffic: true
+
+  # Kubernetes Explorer / Orchestrator
+  orchestratorExplorer:
+    enabled: true
+
+  # Universal Service Monitoring (eBPF) — requires non-cos GKE nodes with writable /usr/src
+  # serviceMonitoring:
+  #   enabled: true
+
+  # Cloud Network Monitoring (eBPF)
+  networkMonitoring:
+    enabled: true
+
+  # Network Path — traceroute-based path visibility per service
+  networkPath:
+    enabled: true
+
+  # Enable traceroute module in system-probe (required by Network Path)
+  traceroute:
+    enabled: true
+
+agents:
+  image:
+    tag: "7"
+  tolerations: []
+
+clusterAgent:
+  enabled: true
+  replicas: 1

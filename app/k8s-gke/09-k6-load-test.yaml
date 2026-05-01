@@ -1,0 +1,342 @@
+# ---------------------------------------------------------------------------
+# 09-k6-load-test.yaml
+#
+# Runs a k6 API load test against all Dogstronaut services every 5 minutes.
+#
+# Architecture:
+#   - CronJob fires every 5 minutes; each Job runs for 4 minutes with 5 VUs.
+#   - The k6 script is stored in a ConfigMap and mounted as a file inside the
+#     container — no custom image needed, just grafana/k6:latest.
+#   - CLUSTER_INTERNAL=true makes the script use cluster-internal DNS so it
+#     can reach fleet-service and payment-service (ClusterIP only) directly.
+#   - concurrencyPolicy: Forbid prevents overlapping runs (4m job < 5m cadence).
+#
+# Deploy:
+#   kubectl apply -f 09-k6-load-test.yaml
+#
+# Monitor:
+#   kubectl -n dogstronaut get cronjob k6-load-test
+#   kubectl -n dogstronaut get jobs -l app=k6-load-test
+#   kubectl -n dogstronaut logs -l app=k6-load-test --tail=100
+#
+# Trigger manually:
+#   kubectl -n dogstronaut create job --from=cronjob/k6-load-test k6-manual-$(date +%s)
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# ConfigMap — contains the k6 script inline
+# ---------------------------------------------------------------------------
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: k6-script
+  namespace: dogstronaut
+  labels:
+    app: k6-load-test
+    env: demo
+data:
+  k6-api-load.js: |
+    /**
+     * k6 API Load Test — Dogstronaut Tours (CosmoCab)
+     * Runs inside the Kubernetes cluster; uses internal DNS to reach all services.
+     */
+    import http from 'k6/http'
+    import { check, group, sleep } from 'k6'
+    import { Rate, Trend, Counter } from 'k6/metrics'
+
+    const bookingSuccessRate     = new Rate('booking_success_rate')
+    const paymentSuccessRate     = new Rate('payment_success_rate')
+    const bookingDuration        = new Trend('booking_flow_duration_ms', true)
+    const fleetQueryDuration     = new Trend('fleet_query_duration_ms', true)
+    const userQueryDuration      = new Trend('user_query_duration_ms', true)
+    const totalBookingsCreated   = new Counter('total_bookings_created')
+    const totalPaymentsProcessed = new Counter('total_payments_processed')
+
+    // Cluster-internal DNS names (all services are ClusterIP in namespace dogstronaut)
+    const BOOKING_URL = __ENV.BOOKING_URL || 'http://booking-service.dogstronaut.svc.cluster.local:4001'
+    const PAYMENT_URL = __ENV.PAYMENT_URL || 'http://payment-service.dogstronaut.svc.cluster.local:4002'
+    const FLEET_URL   = __ENV.FLEET_URL   || 'http://fleet-service.dogstronaut.svc.cluster.local:4003'
+    const USER_URL    = __ENV.USER_URL    || 'http://user-service.dogstronaut.svc.cluster.local:4004'
+
+    export const options = {
+      // vus and duration are overridden by CLI flags in the CronJob command
+      vus:      5,
+      duration: '4m',
+      thresholds: {
+        http_req_failed:          ['rate<0.10'],
+        http_req_duration:        ['p(95)<8000'],
+        booking_flow_duration_ms: ['p(95)<10000'],
+        booking_success_rate:     ['rate>0.85'],
+        payment_success_rate:     ['rate>0.80'],
+      },
+    }
+
+    const DESTINATIONS  = ['iss', 'moon', 'mars', 'jupiter', 'saturn']
+    const ROCKET_CLASSES = ['economy', 'business', 'first_class']
+    const PILOTS        = ['Captain Zara', 'Pilot Rex', 'Ace Voss', 'Dr. Flint']
+    const ROCKET_IDS    = ['r001', 'r002', 'r003', 'r004', 'r005', 'r006', 'r007', 'r008', 'r009']
+
+    const DEMO_USER_NAMES  = ['Salah', 'Haaland', 'Saka', 'Rashford', 'Bellingham', 'Palmer', 'Foden', 'Son']
+    const DEMO_USER_EMAILS = [
+      'salah@epl.io', 'haaland@epl.io', 'saka@epl.io', 'rashford@epl.io',
+      'bellingham@epl.io', 'palmer@epl.io', 'foden@epl.io', 'son@epl.io',
+    ]
+
+    let knownUserIds = []
+
+    function pick(arr) { return arr[Math.floor(Math.random() * arr.length)] }
+    function ri(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min }
+    function futureDate(days) {
+      const d = new Date(); d.setDate(d.getDate() + days)
+      return d.toISOString().split('T')[0]
+    }
+    function hdrs() {
+      return { 'Content-Type': 'application/json', 'User-Agent': 'k6-dogstronaut/1.0' }
+    }
+    function tg(s) { return { env: 'demo', scenario: s } }
+
+    // ---- Booking flow -------------------------------------------------------
+    function bookingFlow() {
+      const t0 = Date.now()
+      group('booking_flow', () => {
+        const dr = http.get(`${BOOKING_URL}/api/destinations`, { headers: hdrs(), tags: tg('booking_flow') })
+        check(dr, { 'destinations 200': (r) => r.status === 200 })
+
+        let destId = pick(DESTINATIONS), price = 9999
+        try {
+          const ds = JSON.parse(dr.body)
+          if (Array.isArray(ds) && ds.length > 0) { const d = pick(ds); destId = d.id || destId; price = d.price_usd || price }
+        } catch (_) {}
+
+        sleep(ri(1, 2))
+
+        const idx  = ri(0, DEMO_USER_NAMES.length - 1)
+        const name = DEMO_USER_NAMES[idx], email = DEMO_USER_EMAILS[idx]
+        const br = http.post(`${BOOKING_URL}/api/bookings`, JSON.stringify({
+          destination_id: destId, passenger_name: name, passenger_email: email,
+          departure_date: futureDate(ri(14, 180)), rocket_class: pick(ROCKET_CLASSES),
+          pilot_name: pick(PILOTS), total_price_usd: price,
+        }), { headers: hdrs(), tags: tg('booking_flow') })
+
+        const bok = check(br, { 'booking 201': (r) => r.status === 201 })
+        bookingSuccessRate.add(bok)
+
+        let bid = null
+        try { const b = JSON.parse(br.body); bid = b.id; price = b.total_price_usd || price } catch (_) {}
+        if (bok) totalBookingsCreated.add(1)
+
+        sleep(ri(1, 2))
+
+        if (bid) {
+          const pr = http.post(`${BOOKING_URL}/api/payments/process`, JSON.stringify({
+            booking_id: bid, amount_usd: price, card_last_four: String(ri(1000, 9999)),
+          }), { headers: hdrs(), tags: tg('booking_flow') })
+          const pok = check(pr, { 'payment 200': (r) => r.status === 200 })
+          paymentSuccessRate.add(pok)
+          if (pok) totalPaymentsProcessed.add(1)
+
+          sleep(ri(1, 2))
+
+          const cr = http.get(`${BOOKING_URL}/api/bookings/${bid}`, { headers: hdrs(), tags: tg('booking_flow') })
+          check(cr, { 'confirm 200': (r) => r.status === 200 })
+
+          sleep(ri(1, 2))
+
+          const sr = http.get(`${BOOKING_URL}/api/bookings/${bid}/status`, { headers: hdrs(), tags: tg('booking_flow') })
+          check(sr, { 'status 200': (r) => r.status === 200 })
+        }
+      })
+      bookingDuration.add(Date.now() - t0)
+    }
+
+    // ---- Fleet browsing -----------------------------------------------------
+    function fleetFlow() {
+      const t0 = Date.now()
+      group('fleet_browsing', () => {
+        const fr = http.get(`${FLEET_URL}/fleet`, { headers: hdrs(), tags: tg('fleet_browsing') })
+        check(fr, { 'fleet 200': (r) => r.status === 200 })
+        sleep(ri(1, 2))
+
+        const ar = http.get(`${FLEET_URL}/availability?rocketClass=${pick(ROCKET_CLASSES)}&date=${futureDate(30)}`,
+          { headers: hdrs(), tags: tg('fleet_browsing') })
+        check(ar, { 'avail 200': (r) => r.status === 200 })
+        sleep(ri(1, 2))
+
+        const rsr = http.get(`${FLEET_URL}/rockets/${pick(ROCKET_IDS)}/status`,
+          { headers: hdrs(), tags: tg('fleet_browsing') })
+        check(rsr, { 'rocket_status 200|404': (r) => r.status === 200 || r.status === 404 })
+        sleep(ri(1, 2))
+
+        const mr = http.get(`${FLEET_URL}/maintenance-schedule`, { headers: hdrs(), tags: tg('fleet_browsing') })
+        check(mr, { 'maintenance 200': (r) => r.status === 200 })
+        sleep(ri(1, 2))
+
+        const cr = http.get(`${FLEET_URL}/crew/${encodeURIComponent(pick(PILOTS))}`,
+          { headers: hdrs(), tags: tg('fleet_browsing') })
+        check(cr, { 'crew 200': (r) => r.status === 200 })
+      })
+      fleetQueryDuration.add(Date.now() - t0)
+    }
+
+    // ---- User service -------------------------------------------------------
+    function userFlow() {
+      const t0 = Date.now()
+      group('user_service', () => {
+        const lr = http.get(`${USER_URL}/users/leaderboard`, { headers: hdrs(), tags: tg('user_service') })
+        check(lr, { 'leaderboard 200': (r) => r.status === 200 })
+        try {
+          const lb = JSON.parse(lr.body)
+          if (lb.leaderboard) lb.leaderboard.forEach((u) => { if (u.id && !knownUserIds.includes(u.id)) knownUserIds.push(u.id) })
+          if (knownUserIds.length > 20) knownUserIds = knownUserIds.slice(-20)
+        } catch (_) {}
+        sleep(ri(1, 2))
+
+        const ts = Date.now()
+        const ucr = http.post(`${USER_URL}/users`, JSON.stringify({
+          name: `LoadTest ${ts}`, email: `lt+${ts}@dogstronaut.space`,
+        }), { headers: hdrs(), tags: tg('user_service') })
+        check(ucr, { 'create_user 201': (r) => r.status === 201 })
+        let uid = null
+        try { uid = JSON.parse(ucr.body).id; if (uid) knownUserIds.push(uid) } catch (_) {}
+        sleep(ri(1, 2))
+
+        const userId = uid || (knownUserIds.length > 0 ? pick(knownUserIds) : null)
+        if (userId) {
+          const pr = http.get(`${USER_URL}/users/${userId}`, { headers: hdrs(), tags: tg('user_service') })
+          check(pr, { 'profile 200': (r) => r.status === 200 })
+          sleep(ri(1, 2))
+
+          const llr = http.get(`${USER_URL}/users/${userId}/loyalty`, { headers: hdrs(), tags: tg('user_service') })
+          check(llr, { 'loyalty 200': (r) => r.status === 200 })
+          sleep(ri(1, 2))
+
+          if (uid) {
+            const patch = http.patch(`${USER_URL}/users/${uid}`,
+              JSON.stringify({ name: `Updated ${Date.now()}` }),
+              { headers: hdrs(), tags: tg('user_service') })
+            check(patch, { 'patch_user 200': (r) => r.status === 200 })
+          }
+        }
+      })
+      userQueryDuration.add(Date.now() - t0)
+    }
+
+    // ---- Payment + list -----------------------------------------------------
+    function paymentListFlow() {
+      group('payment_and_list', () => {
+        const blr = http.get(`${BOOKING_URL}/api/bookings?limit=10`, { headers: hdrs(), tags: tg('payment_and_list') })
+        check(blr, { 'bookings_list 200': (r) => r.status === 200 })
+
+        let bid = null
+        try { const bl = JSON.parse(blr.body); if (bl.bookings && bl.bookings.length > 0) bid = pick(bl.bookings).id } catch (_) {}
+        sleep(ri(1, 2))
+
+        const fakeBid = bid || `lt-${Date.now()}`
+        const dpr = http.post(`${PAYMENT_URL}/process`, JSON.stringify({
+          booking_id: fakeBid, amount_usd: ri(5000, 75000), card_last_four: String(ri(1000, 9999)),
+        }), { headers: hdrs(), tags: tg('payment_and_list') })
+        const pok = check(dpr, { 'direct_pay 200': (r) => r.status === 200 })
+        paymentSuccessRate.add(pok)
+        if (pok) totalPaymentsProcessed.add(1)
+
+        sleep(ri(1, 2))
+
+        const phr = http.get(`${PAYMENT_URL}/payments/${fakeBid}`, { headers: hdrs(), tags: tg('payment_and_list') })
+        check(phr, { 'pay_history 200': (r) => r.status === 200 })
+      })
+    }
+
+    // ---- Main VU loop -------------------------------------------------------
+    export default function () {
+      const roll = Math.random()
+      if      (roll < 0.45) bookingFlow()
+      else if (roll < 0.70) fleetFlow()
+      else if (roll < 0.88) userFlow()
+      else                  paymentListFlow()
+      sleep(ri(1, 3))
+    }
+
+---
+# ---------------------------------------------------------------------------
+# CronJob — fires every 5 minutes, runs k6 for 4 minutes with 5 VUs
+# ---------------------------------------------------------------------------
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: k6-load-test
+  namespace: dogstronaut
+  labels:
+    app: k6-load-test
+    env: demo
+spec:
+  # Every 5 minutes. Adjust to taste (e.g. "*/10 * * * *" for every 10 min).
+  schedule: "*/5 * * * *"
+
+  # Prevent a new job from starting if the previous one is still running.
+  # The job runs for 4m, so the 1-minute gap between job end and next fire
+  # is intentional. Forbid ensures no overlap even under scheduling jitter.
+  concurrencyPolicy: Forbid
+
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 2
+
+  jobTemplate:
+    spec:
+      # Allow the job 6 minutes to finish (4m run + 2m buffer for k6 teardown)
+      activeDeadlineSeconds: 360
+
+      template:
+        metadata:
+          labels:
+            app: k6-load-test
+            env: demo
+        spec:
+          restartPolicy: Never
+
+          volumes:
+            - name: k6-script
+              configMap:
+                name: k6-script
+
+          containers:
+            - name: k6
+              image: grafana/k6:latest
+              imagePullPolicy: Always
+
+              # Run with explicit --duration and --vus flags so they override
+              # whatever is set inside the script's options block.
+              command:
+                - k6
+                - run
+                - --duration=4m
+                - --vus=5
+                - --out=json=/tmp/k6-results.json
+                - /scripts/k6-api-load.js
+
+              env:
+                # Instruct the script to use cluster-internal DNS names
+                - name: CLUSTER_INTERNAL
+                  value: "true"
+
+                # Explicit service URLs (redundant with CLUSTER_INTERNAL but
+                # makes the configuration explicit and easy to override per-env)
+                - name: BOOKING_URL
+                  value: "http://booking-service.dogstronaut.svc.cluster.local:4001"
+                - name: PAYMENT_URL
+                  value: "http://payment-service.dogstronaut.svc.cluster.local:4002"
+                - name: FLEET_URL
+                  value: "http://fleet-service.dogstronaut.svc.cluster.local:4003"
+                - name: USER_URL
+                  value: "http://user-service.dogstronaut.svc.cluster.local:4004"
+
+              volumeMounts:
+                - name: k6-script
+                  mountPath: /scripts
+
+              resources:
+                requests:
+                  memory: "128Mi"
+                  cpu: "100m"
+                limits:
+                  memory: "256Mi"
+                  cpu: "500m"

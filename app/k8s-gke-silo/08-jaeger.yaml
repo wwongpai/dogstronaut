@@ -1,0 +1,167 @@
+# Jaeger all-in-one — Badger persistent store, receives from DDOT via OTLP
+# UI exposed via LoadBalancer (restricted to user IP)
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: jaeger-badger-pvc
+  namespace: observability-silo
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: jaeger-ui-config
+  namespace: observability-silo
+data:
+  ui-config.json: |
+    {
+      "tracking": {
+        "gaID": "",
+        "trackErrors": false
+      },
+      "menu": [
+        {
+          "label": "🚀 Dogstronaut Tours",
+          "items": [
+            {
+              "label": "Business Dashboard",
+              "url": "https://lolay.datadoghq.com/dashboard/scu-sgp-yy8"
+            },
+            {
+              "label": "Datadog APM",
+              "url": "https://lolay.datadoghq.com/apm/services"
+            }
+          ]
+        }
+      ]
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jaeger
+  namespace: observability-silo
+  labels:
+    app: jaeger
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: jaeger
+  template:
+    metadata:
+      labels:
+        app: jaeger
+    spec:
+      securityContext:
+        fsGroup: 10001   # Jaeger runs as uid 10001; GKE chowns PVC mount to this gid
+      containers:
+        - name: jaeger
+          image: jaegertracing/all-in-one:1.57
+          ports:
+            - containerPort: 4317   # OTLP gRPC receiver
+              name: otlp-grpc
+            - containerPort: 4318   # OTLP HTTP receiver
+              name: otlp-http
+            - containerPort: 16686  # Jaeger UI
+              name: ui
+            - containerPort: 14268  # Jaeger HTTP thrift
+              name: http-thrift
+            - containerPort: 9411   # Zipkin
+              name: zipkin
+          args:
+            - "--query.ui-config=/etc/jaeger-ui/ui-config.json"
+          env:
+            - name: COLLECTOR_OTLP_ENABLED
+              value: "true"
+            - name: SPAN_STORAGE_TYPE
+              value: "badger"
+            - name: BADGER_EPHEMERAL
+              value: "false"
+            - name: BADGER_DIRECTORY_VALUE
+              value: "/badger/data"
+            - name: BADGER_DIRECTORY_KEY
+              value: "/badger/key"
+            - name: QUERY_BASE_PATH
+              value: "/"
+          volumeMounts:
+            - name: ui-config
+              mountPath: /etc/jaeger-ui
+            - name: badger-storage
+              mountPath: /badger
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 16686
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 16686
+            initialDelaySeconds: 20
+            periodSeconds: 30
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "100m"
+            limits:
+              memory: "2Gi"
+              cpu: "500m"
+      volumes:
+        - name: ui-config
+          configMap:
+            name: jaeger-ui-config
+        - name: badger-storage
+          persistentVolumeClaim:
+            claimName: jaeger-badger-pvc
+---
+# ClusterIP for DDOT → Jaeger trace ingestion (OTLP port 4317)
+apiVersion: v1
+kind: Service
+metadata:
+  name: jaeger
+  namespace: observability-silo
+  labels:
+    app: jaeger
+spec:
+  type: ClusterIP
+  selector:
+    app: jaeger
+  ports:
+    - port: 4317
+      targetPort: 4317
+      name: otlp-grpc
+    - port: 4318
+      targetPort: 4318
+      name: otlp-http
+    - port: 14268
+      targetPort: 14268
+      name: http-thrift
+---
+# LoadBalancer for Jaeger UI — restricted to user's public IP
+apiVersion: v1
+kind: Service
+metadata:
+  name: jaeger-ui
+  namespace: observability-silo
+  labels:
+    app: jaeger
+spec:
+  type: LoadBalancer
+  loadBalancerSourceRanges:
+    # Replace with the public IP(s) that should be allowed to reach Jaeger UI.
+    - "0.0.0.0/0"
+  selector:
+    app: jaeger
+  ports:
+    - port: 16686
+      targetPort: 16686
+      name: ui
+      protocol: TCP
